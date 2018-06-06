@@ -23,73 +23,78 @@ AtomicSwap = function (configuration, appConfiguration) {
     /**
      * Initiate atomic swap transfer
      * @param refundTime
-     * @param secret - Secret hash
+     * @param secretHash - Secret hash
      * @param address - Participant address
      * @param amount - Amount to transfer
      * @param extendedParams
      * @constructor
      */
-    this.Initiate = function (refundTime, secret, address, amount, extendedParams) {
+    this.Initiate = function (refundTime, secretHash, address, amount, extendedParams) {
         var conversion = (extendedParams && extendedParams.conversion) ? extendedParams.conversion : 'milliether';
 
         var params = {
             from: this.appConfig.defaultWallet,
-            value: this.web3.utils.toWei(amount, conversion)
+            value: this.web3.utils.toWei(amount, conversion),
+            gas: 200000
         };
 
         this.engine.common.Extend(params, extendedParams, ["conversion"]);
-        return this.engine.callFunction("initiate", [refundTime, secret, address], params);
+        return this.engine.callFunction("initiate", [refundTime, secretHash, address, 1], params);
     };
 
     /**
      * Participate to atomic swap transfer
      * @param refundTime
-     * @param secret - Secret hash
+     * @param secretHash - Secret hash
      * @param address - Participant address
      * @param amount
      * @param extendedParams
      */
-    this.Participate = function (refundTime, secret, address, amount, extendedParams) {
+    this.Participate = function (refundTime, secretHash, address, amount, extendedParams) {
         var conversion = (extendedParams && extendedParams.conversion) ? extendedParams.conversion : 'milliether';
 
         var params = {
             from: this.appConfig.defaultWallet,
-            value: this.web3.utils.toWei(amount, conversion)
+            value: this.web3.utils.toWei(amount, conversion),
+            gas: 200000
         };
 
         this.engine.common.Extend(params, extendedParams, ["conversion"]);
-        return this.engine.callFunction("participate", [refundTime, secret, address], params);
+        return this.engine.callFunction("initiate", [refundTime, secretHash, address, 2], params);
     };
 
     /**
      * Redeem funds with given secret
-     * @param secret - Secret hash
-     * @param hashedSecret
+     * @param secretHash - Secret hash
+     * @param from - address of fund's owner
      * @param extendedParams
      */
-    this.Redeem = function (secret, hashedSecret, extendedParams) {
+    this.Redeem = function (secretHash, from, extendedParams) {
 
         var params = {
-            from: this.appConfig.defaultWallet
+            from: this.appConfig.defaultWallet,
+            gas: 200000
         };
 
         this.engine.common.Extend(params, extendedParams);
-        return this.callFunction("redeem", [secret, hashedSecret], params);
+        return this.callFunction("redeem", [secretHash, from], params);
     };
 
     /**
      * Refund contract transaction
-     * @param hashedSecret
+     * @param secretHash
+     * @param to - address of participant of contract
      * @param extendedParams
      */
-    this.Refund = function (hashedSecret, extendedParams) {
+    this.Refund = function (secretHash, to, extendedParams) {
 
         var params = {
-            from: this.appConfig.defaultWallet
+            from: this.appConfig.defaultWallet,
+            gas: 200000
         };
 
         this.engine.common.Extend(params, extendedParams);
-        return this.callFunction("refund", [hashedSecret], params);
+        return this.callFunction("refund", [secretHash, to], params);
     };
 };
 

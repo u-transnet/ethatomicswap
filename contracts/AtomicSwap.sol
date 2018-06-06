@@ -9,116 +9,122 @@ contract AtomicSwap {
         uint refundTime;
         bytes20 hashedSecret;
         bytes32 secret;
-        address initiator;
-        address participant;
+        address from;
+        address to;
         uint256 value;
         bool emptied;
         State state;
     }
 
-    mapping(bytes20 => Swap) public swaps;
+    mapping(bytes32 => Swap) public swaps;
     
 	event Refunded(uint _refundTime);
     event Redeemed(uint _redeemTime);
     event Participated(
-        address _initiator, 
-        address _participator, 
+        uint _initTimestamp,
+        uint _refundTime,
         bytes20 _hashedSecret,
+        address _from,
+        address _to,
         uint256 _value
     );
 	event Initiated(
 		uint _initTimestamp,
     	uint _refundTime,
     	bytes20 _hashedSecret,
-    	address _participant,
-    	address _initiator,
-		uint256 _funds
+    	address _from,
+    	address _to,
+		uint256 _value
 	);
 
-	function AtomicSwap() {}
+    constructor() public {}
+
+    function calculateSecretHash(bytes32 _secret) private pure returns(bytes20 secretHash){
+        return ripemd160(abi.encodePacked(_secret));
+    }
+
+    function calculateContractHash(address _from, address _to, bytes20 _secretHash) private pure returns(bytes32 contractHash){
+        return sha256(abi.encodePacked(_from, _to, _secretHash));
+    }
     
-	modifier isRefundable(bytes20 _hashedSecret) {
-	    require(block.timestamp > swaps[_hashedSecret].initTimestamp + swaps[_hashedSecret].refundTime);
-	    require(swaps[_hashedSecret].emptied == false);
-	    _;
+	function isRefundable(bytes32 _contractHash) private{
+	    require(block.timestamp > swaps[_contractHash].initTimestamp + swaps[_contractHash].refundTime);
+	    require(swaps[_contractHash].emptied == false);
 	}
 	
-	modifier isRedeemable(bytes20 _hashedSecret, bytes32 _secret) {
-	    require(ripemd160(_secret) == _hashedSecret);
-		require(block.timestamp < swaps[_hashedSecret].initTimestamp + swaps[_hashedSecret].refundTime);
-	    require(swaps[_hashedSecret].emptied == false);
-	    _;
-	}
-	
-	modifier isInitiator(bytes20 _hashedSecret) {
-	    require(msg.sender == swaps[_hashedSecret].initiator);
-	    _;
-	}
-	
-	modifier isNotInitiated(bytes20 _hashedSecret) {
-	    require(swaps[_hashedSecret].state == State.Empty);
-	    _;
+	function isRedeemable(bytes32 _contractHash) private{
+		require(block.timestamp < swaps[_contractHash].initTimestamp + swaps[_contractHash].refundTime);
+	    require(swaps[_contractHash].emptied == false);
 	}
 
-	function initiate (uint _refundTime,bytes20 _hashedSecret,address _participant) 
-	    payable 
-	    isNotInitiated(_hashedSecret)    
-	{
-	    swaps[_hashedSecret].refundTime = _refundTime;
-	    swaps[_hashedSecret].initTimestamp = block.timestamp;
-	    swaps[_hashedSecret].hashedSecret = _hashedSecret;
-	    swaps[_hashedSecret].participant = _participant;
-	    swaps[_hashedSecret].initiator = msg.sender;
-        swaps[_hashedSecret].state = State.Initiator;
-        swaps[_hashedSecret].value = msg.value;
-		Initiated(
-			swaps[_hashedSecret].initTimestamp,
-    		_refundTime,
-    		_hashedSecret,
-    		_participant,
-    		msg.sender,
-		 	msg.value
-		);
-	}
-
-    function participate(uint _refundTime, bytes20 _hashedSecret,address _initiator) 
-        payable 
-        isNotInitiated(_hashedSecret)
-    {
-        swaps[_hashedSecret].refundTime = _refundTime;
-	    swaps[_hashedSecret].initTimestamp = block.timestamp;
-        swaps[_hashedSecret].participant = msg.sender;
-        swaps[_hashedSecret].initiator = _initiator;
-        swaps[_hashedSecret].value = msg.value;
-        swaps[_hashedSecret].hashedSecret = _hashedSecret;
-        swaps[_hashedSecret].state = State.Participant;
-        Participated(_initiator,msg.sender,_hashedSecret,msg.value);
+    function isInitiated(bytes32 _contractHash) private{
+        require(swaps[_contractHash].state != State.Empty);
     }
 	
-	function redeem(bytes32 _secret, bytes20 _hashedSecret) 
-	    isRedeemable(_hashedSecret, _secret)
-	{
-        if(swaps[_hashedSecret].state == State.Participant){
-            swaps[_hashedSecret].initiator.transfer(swaps[_hashedSecret].value);
-        }
-        if(swaps[_hashedSecret].state == State.Initiator){
-            swaps[_hashedSecret].participant.transfer(swaps[_hashedSecret].value);
-        }
-        swaps[_hashedSecret].emptied = true;
-        Redeemed(block.timestamp);
-        swaps[_hashedSecret].secret = _secret;
+	function isNotInitiated(bytes32 _contractHash) private {
+	    require(swaps[_contractHash].state == State.Empty);
 	}
 
-	function refund(bytes20 _hashedSecret)
-	    isRefundable(_hashedSecret) 
+	function initiate(uint _refundTime, bytes20 _hashedSecret, address _to, uint _type)
+        external
+	    payable
 	{
-	    if(swaps[_hashedSecret].state == State.Participant){
-            swaps[_hashedSecret].participant.transfer(swaps[_hashedSecret].value);
-        }
-        if(swaps[_hashedSecret].state == State.Initiator){
-            swaps[_hashedSecret].initiator.transfer(swaps[_hashedSecret].value);
-        }
-        swaps[_hashedSecret].emptied = true;
-	    Refunded(block.timestamp);
+        bytes32 contractHash = calculateContractHash(msg.sender, _to, _hashedSecret);
+        isNotInitiated(contractHash);
+
+        State state = State(_type);
+        require(State(_type) != State.Empty);
+
+	    swaps[contractHash].refundTime = _refundTime;
+	    swaps[contractHash].initTimestamp = block.timestamp;
+	    swaps[contractHash].hashedSecret = _hashedSecret;
+        swaps[contractHash].from = msg.sender;
+	    swaps[contractHash].to = _to;
+        swaps[contractHash].state = state;
+        swaps[contractHash].value = msg.value;
+
+        if(state == State.Initiator)
+            emit Initiated(
+                swaps[contractHash].initTimestamp,
+                _refundTime,
+                _hashedSecret,
+                msg.sender,
+                _to,
+                msg.value
+            );
+        else
+            emit Participated(
+                swaps[contractHash].initTimestamp,
+                _refundTime,
+                _hashedSecret,
+                msg.sender,
+                _to,
+                msg.value
+            );
+	}
+	
+	function redeem(bytes32 _secret, address _from)
+        external
+	{
+        bytes32 contractHash = calculateContractHash(_from, msg.sender, calculateSecretHash(_secret));
+        isInitiated(contractHash);
+        isRedeemable(contractHash);
+
+        swaps[contractHash].to.transfer(swaps[contractHash].value);
+        swaps[contractHash].emptied = true;
+        swaps[contractHash].secret = _secret;
+        emit Redeemed(block.timestamp);
+	}
+
+	function refund(bytes20 _hashedSecret, address _to)
+        external
+	{
+        bytes32 contractHash = calculateContractHash(msg.sender, _to, _hashedSecret);
+        isInitiated(contractHash);
+        isRefundable(contractHash);
+
+        swaps[contractHash].from.transfer(swaps[contractHash].value);
+        swaps[contractHash].emptied = true;
+	    emit Refunded(block.timestamp);
 	}
 }
