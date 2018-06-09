@@ -18,22 +18,33 @@ contract AtomicSwap {
 
     mapping(bytes32 => Swap) public swaps;
     
-	event Refunded(uint _refundTime);
-    event Redeemed(uint _redeemTime);
+	event Refunded(
+        uint _refundTime,
+        bytes20 indexed _hashedSecret,
+        address indexed _from,
+        address indexed _to
+    );
+    event Redeemed(
+        uint _redeemTime,
+        bytes32 _secret,
+        bytes20 indexed _hashedSecret,
+        address indexed _from,
+        address indexed _to
+    );
     event Participated(
         uint _initTimestamp,
         uint _refundTime,
-        bytes20 _hashedSecret,
-        address _from,
-        address _to,
+        bytes20 indexed _hashedSecret,
+        address indexed _from,
+        address indexed _to,
         uint256 _value
     );
 	event Initiated(
 		uint _initTimestamp,
     	uint _refundTime,
-    	bytes20 _hashedSecret,
-    	address _from,
-    	address _to,
+    	bytes20 indexed _hashedSecret,
+    	address indexed _from,
+    	address indexed _to,
 		uint256 _value
 	);
 
@@ -47,21 +58,21 @@ contract AtomicSwap {
         return sha256(abi.encodePacked(_from, _to, _secretHash));
     }
     
-	function isRefundable(bytes32 _contractHash) private{
+	function isRefundable(bytes32 _contractHash) view private{
 	    require(block.timestamp > swaps[_contractHash].initTimestamp + swaps[_contractHash].refundTime);
 	    require(swaps[_contractHash].emptied == false);
 	}
 	
-	function isRedeemable(bytes32 _contractHash) private{
+	function isRedeemable(bytes32 _contractHash) view private{
 		require(block.timestamp < swaps[_contractHash].initTimestamp + swaps[_contractHash].refundTime);
 	    require(swaps[_contractHash].emptied == false);
 	}
 
-    function isInitiated(bytes32 _contractHash) private{
+    function isInitiated(bytes32 _contractHash) view private{
         require(swaps[_contractHash].state != State.Empty);
     }
 	
-	function isNotInitiated(bytes32 _contractHash) private {
+	function isNotInitiated(bytes32 _contractHash) view private {
 	    require(swaps[_contractHash].state == State.Empty);
 	}
 
@@ -106,14 +117,22 @@ contract AtomicSwap {
 	function redeem(bytes32 _secret, address _from)
         external
 	{
-        bytes32 contractHash = calculateContractHash(_from, msg.sender, calculateSecretHash(_secret));
+        bytes20 hashedSecret = calculateSecretHash(_secret);
+        bytes32 contractHash = calculateContractHash(_from, msg.sender, hashedSecret);
         isInitiated(contractHash);
         isRedeemable(contractHash);
 
         swaps[contractHash].to.transfer(swaps[contractHash].value);
         swaps[contractHash].emptied = true;
         swaps[contractHash].secret = _secret;
-        emit Redeemed(block.timestamp);
+
+        emit Redeemed(
+            block.timestamp,
+            _secret,
+            hashedSecret,
+            _from,
+            msg.sender
+        );
 	}
 
 	function refund(bytes20 _hashedSecret, address _to)
@@ -125,6 +144,12 @@ contract AtomicSwap {
 
         swaps[contractHash].from.transfer(swaps[contractHash].value);
         swaps[contractHash].emptied = true;
-	    emit Refunded(block.timestamp);
+
+	    emit Refunded(
+            block.timestamp,
+            _hashedSecret,
+            msg.sender,
+            _to
+        );
 	}
 }
