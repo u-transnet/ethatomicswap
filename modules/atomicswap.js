@@ -65,11 +65,11 @@ AtomicSwap = function (configuration, appConfiguration) {
 
     /**
      * Redeem funds with given secret
-     * @param secretHash - Secret hash
+     * @param secret - Secret hash
      * @param from - address of fund's owner
      * @param extendedParams
      */
-    this.Redeem = function (secretHash, from, extendedParams) {
+    this.Redeem = function (secret, from, extendedParams) {
 
         var params = {
             from: this.appConfig.defaultWallet,
@@ -77,7 +77,7 @@ AtomicSwap = function (configuration, appConfiguration) {
         };
 
         this.engine.common.Extend(params, extendedParams);
-        return this.callFunction("redeem", [secretHash, from], params);
+        return this.callFunction("redeem", [secret, from], params);
     };
 
     /**
